@@ -7,11 +7,11 @@
 
 import SwiftUI
 
-struct ContentView: View {
+struct NotificationsListView: View {
     
     @EnvironmentObject var lnManager: LocalNotificationManager
-    
     @Environment(\.scenePhase) var scenePhase
+    @State private var scheduleDate = Date()
     
     var body: some View {
         NavigationStack {
@@ -21,27 +21,67 @@ struct ContentView: View {
                 if lnManager.isGranted {
                     
                     GroupBox("Schedule") {
+                        
+                        /// Interval Time
                         Button("Interval Notification") {
                             Task {
-                                let localNotification = LocalNotification(
+                                var localNotification = LocalNotification(
                                     identifier: UUID().uuidString,
                                     title: "Some title",
                                     body: "Some body",
-                                    timeInterval: 10,
+                                    timeInterval: 10, /// time interval must be at least 60 if repeating
                                     repeats: false
                                 )
+                                localNotification.subtitle = "This is a subtitle"
+                                localNotification.bundleImageName = "Swift.png"
+                                localNotification.userInfo = ["nextView" : NextView.renew.rawValue]
+                                localNotification.categoryIdentifier = "snooze"
                                 
                                 await lnManager.schedule(localNotification: localNotification)
                             }
                         }
                         .buttonStyle(.bordered)
                         
-                        Button("Calendar Notification") {
-                            
+                        /// Calendar
+                        GroupBox {
+                            DatePicker("", selection: $scheduleDate)
+                            Button("Calendar Notification") {
+                                Task {
+                                    let dateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: scheduleDate)
+                                    let localNotification = LocalNotification(
+                                        identifier: UUID().uuidString,
+                                        title: "Calendar Notification",
+                                        body: "Some Body",
+                                        dateComponents: dateComponents,
+                                        repeats: false
+                                    )
+                                    
+                                    await lnManager.schedule(localNotification: localNotification)
+                                }
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.bordered)
                     }
                     .frame(width: 300)
+                    
+                    /// List requests
+                    List {
+                        ForEach(lnManager.pendingRequests, id: \.identifier) { request in
+                            VStack(alignment: .leading) {
+                                Text(request.content.title)
+                                HStack {
+                                    Text(request.identifier)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .swipeActions {
+                                Button("Delete", role: .destructive) {
+                                    lnManager.removeRequest(withIdentifier: request.identifier)
+                                }
+                            }
+                        }
+                    }
                     
                 } else {
                     Button("Enable Notification") {
@@ -51,6 +91,19 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Local Notifcation")
+            .sheet(item: $lnManager.nextView) { nextView in
+                nextView.view()
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        lnManager.clearRequests()
+                    } label: {
+                        Image(systemName: "clear.fill")
+                            .imageScale(.large)
+                    }
+                }
+            }
         }
         .navigationViewStyle(.stack)
         .task {
@@ -69,6 +122,6 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    NotificationsListView()
         .environmentObject(LocalNotificationManager())
 }
